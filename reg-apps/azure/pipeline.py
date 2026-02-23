@@ -50,10 +50,9 @@ from pathlib import Path
 from typing import Annotated, Optional
 
 import typer
-from azure.ai.ml import Input, MLClient, Output, command, dsl, parallel_run_function
-from azure.ai.ml.constants import AssetTypes, InputOutputModes
-from azure.ai.ml.entities import AmlCompute, Environment
-from azure.ai.ml.parallel import RunFunction
+from azure.ai.ml import Input, MLClient, Output, command, dsl
+from azure.ai.ml.constants import AssetTypes
+from azure.ai.ml.entities import Environment
 from azure.identity import DefaultAzureCredential
 
 app = typer.Typer(
@@ -261,7 +260,20 @@ def submit_iterative(
     fans out pairwise registrations, waits for it to finish, then feeds
     the resulting average back as the template for the next iteration.
     """
-    from azure.ai.ml.entities import PipelineJob
+
+    def _submit_and_wait(pipeline_func, description: str) -> str:
+        """Submit a pipeline job, stream logs, and return the template URI."""
+        typer.echo(f"── {description} ──")
+        job = ml_client.jobs.create_or_update(
+            pipeline_func(
+                images_folder=Input(type=AssetTypes.URI_FOLDER, path=images_uri),
+                template=Input(type=AssetTypes.URI_FILE, path=current_template),
+            ),
+            experiment_name=experiment_name,
+        )
+        typer.echo(f"  Submitted job: {job.name}")
+        ml_client.jobs.stream(job.name)
+        return f"azureml://jobs/{job.name}/outputs/template"
 
     current_template = template_uri
 
@@ -269,11 +281,6 @@ def submit_iterative(
         is_last_aff = aff_it == affine_iterations
         rigid_only = aff_it == 1
         mode = "avg" if is_last_aff else "demean"
-
-        typer.echo(
-            f"── Affine iteration {aff_it}/{affine_iterations}"
-            f" (rigid={rigid_only}, avg_mode={mode}) ──"
-        )
 
         @dsl.pipeline(
             description=f"Affine iteration {aff_it}/{affine_iterations}",
@@ -294,28 +301,15 @@ def submit_iterative(
             )
             return {"template": avg.outputs.output_average}
 
-        job = ml_client.jobs.create_or_update(
-            _aff_pipeline(
-                images_folder=Input(type=AssetTypes.URI_FOLDER, path=images_uri),
-                template=Input(type=AssetTypes.URI_FILE, path=current_template),
-            ),
-            experiment_name=experiment_name,
-        )
-        typer.echo(f"  Submitted job: {job.name}")
-        ml_client.jobs.stream(job.name)
-
-        current_template = (
-            f"azureml://jobs/{job.name}/outputs/template"
+        current_template = _submit_and_wait(
+            _aff_pipeline,
+            f"Affine iteration {aff_it}/{affine_iterations}"
+            f" (rigid={rigid_only}, avg_mode={mode})",
         )
 
     for nrr_it in range(1, nrr_iterations + 1):
         is_last_nrr = nrr_it == nrr_iterations
         mode = "avg" if is_last_nrr else "demean_noaff"
-
-        typer.echo(
-            f"── NRR iteration {nrr_it}/{nrr_iterations}"
-            f" (avg_mode={mode}) ──"
-        )
 
         @dsl.pipeline(
             description=f"NRR iteration {nrr_it}/{nrr_iterations}",
@@ -335,18 +329,10 @@ def submit_iterative(
             )
             return {"template": avg.outputs.output_average}
 
-        job = ml_client.jobs.create_or_update(
-            _nrr_pipeline(
-                images_folder=Input(type=AssetTypes.URI_FOLDER, path=images_uri),
-                template=Input(type=AssetTypes.URI_FILE, path=current_template),
-            ),
-            experiment_name=experiment_name,
-        )
-        typer.echo(f"  Submitted job: {job.name}")
-        ml_client.jobs.stream(job.name)
-
-        current_template = (
-            f"azureml://jobs/{job.name}/outputs/template"
+        current_template = _submit_and_wait(
+            _nrr_pipeline,
+            f"NRR iteration {nrr_it}/{nrr_iterations}"
+            f" (avg_mode={mode})",
         )
 
     typer.echo(f"✓ Final template: {current_template}")

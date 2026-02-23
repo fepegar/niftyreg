@@ -7,6 +7,7 @@ Each invocation registers one floating image to the reference using
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import Optional
 
@@ -40,7 +41,7 @@ def main(
     if floating_mask is not None:
         args.extend(["-fmask", str(floating_mask)])
 
-    res = str(output_result) if save_result else "/dev/null"
+    res = str(output_result) if save_result else os.devnull
 
     args.extend([
         "-ref", str(reference),
