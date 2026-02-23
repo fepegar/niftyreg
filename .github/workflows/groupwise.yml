@@ -45,16 +45,19 @@ jobs:
         run: |
           uv run --with torchio python -c "
           import torchio as tio
+          from pathlib import Path
           dataset = tio.datasets.IXITiny('ixi_tiny', download=True)
           print(f'Downloaded {len(dataset)} subjects')
+          paths = [str(subject.T1.path) for subject in dataset]
+          Path('ixi_tiny_paths.txt').write_text('\n'.join(paths))
+          print(f'Wrote {len(paths)} image paths to ixi_tiny_paths.txt')
           "
 
       - name: Create template from IXITiny
         working-directory: reg-apps
         run: |
-          images=(ixi_tiny/IXITiny/image/*.nii.gz)
+          readarray -t images < ixi_tiny_paths.txt
           echo "Found ${#images[@]} images"
-          # Average all images to create an initial template
           reg_average template.nii.gz -avg "${images[@]}"
           ls -lh template.nii.gz
 
@@ -62,7 +65,7 @@ jobs:
         working-directory: reg-apps
         run: |
           # Use only the first 3 images and minimal iterations for CI
-          images=(ixi_tiny/IXITiny/image/*.nii.gz)
+          readarray -t images < ixi_tiny_paths.txt
           uv run python groupwise_niftyreg.py \
             "${images[@]:0:3}" \
             --template template.nii.gz \
