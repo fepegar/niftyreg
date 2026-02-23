@@ -48,3 +48,9 @@ out*
 # Doxygen
 html
 latex
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+*.egg-info/
