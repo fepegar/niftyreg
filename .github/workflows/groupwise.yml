@@ -48,7 +48,7 @@ jobs:
           from pathlib import Path
           dataset = tio.datasets.IXITiny('ixi_tiny', download=True)
           print(f'Downloaded {len(dataset)} subjects')
-          paths = [str(subject.T1.path) for subject in dataset]
+          paths = [str(subject.image.path) for subject in dataset]
           Path('ixi_tiny_paths.txt').write_text('\n'.join(paths))
           print(f'Wrote {len(paths)} image paths to ixi_tiny_paths.txt')
           "
