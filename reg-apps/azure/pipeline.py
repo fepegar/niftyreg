@@ -121,7 +121,8 @@ _register_aladin = command(
     },
     code=SRC_DIR,
     command=(
-        "python register_aladin.py"
+        "niftyregw install &&"
+        " python register_aladin.py"
         " --reference ${{inputs.reference}}"
         " --floating ${{inputs.floating}}"
         " $[[--input-affine ${{inputs.input_affine}}]]"
@@ -155,7 +156,8 @@ _register_f3d = command(
     },
     code=SRC_DIR,
     command=(
-        "python register_f3d.py"
+        "niftyregw install &&"
+        " python register_f3d.py"
         " --reference ${{inputs.reference}}"
         " --floating ${{inputs.floating}}"
         " $[[--input-affine ${{inputs.input_affine}}]]"
@@ -183,7 +185,8 @@ _average = command(
     },
     code=SRC_DIR,
     command=(
-        "python average.py"
+        "niftyregw install &&"
+        " python average.py"
         " --transforms-and-images ${{inputs.transforms_and_images}}"
         " --reference ${{inputs.reference}}"
         " --mode ${{inputs.mode}}"
