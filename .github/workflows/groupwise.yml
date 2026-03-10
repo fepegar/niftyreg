@@ -1,0 +1,82 @@
+name: Groupwise registration
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  groupwise:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # ── Build NiftyReg ──────────────────────────────────────────
+      - name: Install Catch2
+        run: |
+          git clone https://github.com/catchorg/Catch2.git
+          cd Catch2
+          cmake -Bbuild -H. -DBUILD_TESTING=OFF
+          sudo cmake --build build/ --target install --config Release
+
+      - name: Build NiftyReg
+        run: |
+          mkdir build && cd build
+          cmake -DCMAKE_C_COMPILER=gcc \
+                -DCMAKE_CXX_COMPILER=g++ \
+                -DCMAKE_BUILD_TYPE=Release \
+                -DBUILD_ALL_DEP=ON \
+                -DUSE_CUDA=OFF \
+                -DUSE_OPENCL=OFF \
+                -DUSE_SSE=ON \
+                -DUSE_OPENMP=ON \
+                -DBUILD_TESTING=OFF \
+                ..
+          cmake --build . --config Release
+
+      - name: Add NiftyReg to PATH
+        run: echo "${{ github.workspace }}/build/reg-apps" >> "$GITHUB_PATH"
+
+      # ── Python setup ────────────────────────────────────────────
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+
+      - name: Download IXITiny with TorchIO
+        working-directory: reg-apps
+        run: |
+          uv run --with torchio python -c "
+          import torchio as tio
+          from pathlib import Path
+          dataset = tio.datasets.IXITiny('ixi_tiny', download=True)
+          print(f'Downloaded {len(dataset)} subjects')
+          paths = [str(subject.image.path) for subject in dataset]
+          Path('ixi_tiny_paths.txt').write_text('\n'.join(paths))
+          print(f'Wrote {len(paths)} image paths to ixi_tiny_paths.txt')
+          "
+
+      - name: Create template from IXITiny
+        working-directory: reg-apps
+        run: |
+          readarray -t images < ixi_tiny_paths.txt
+          echo "Found ${#images[@]} images"
+          reg_average template.nii.gz -avg "${images[@]}"
+          ls -lh template.nii.gz
+
+      - name: Run groupwise registration
+        working-directory: reg-apps
+        run: |
+          # Use only the first 3 images and minimal iterations for CI
+          readarray -t images < ixi_tiny_paths.txt
+          uv run python groupwise_niftyreg.py \
+            "${images[@]:0:3}" \
+            --template template.nii.gz \
+            --affine-iterations 2 \
+            --nrr-iterations 1 \
+            --result-dir groupwise_result
+
+      - name: Verify outputs
+        working-directory: reg-apps
+        run: |
+          echo "── Affine results ──"
+          ls -lh groupwise_result/aff_*/
+          echo "── Non-rigid results ──"
+          ls -lh groupwise_result/nrr_*/
